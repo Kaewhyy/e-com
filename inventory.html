@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .inventory-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .inventory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .inventory-table th, .inventory-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .inventory-table th {
+            background-color: #f2f2f2;
+        }
+        .inventory-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .stock-low {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .stock-ok {
+            color: #388e3c;
+        }
+        .edit-stock {
+            display: flex;
+            gap: 10px;
+        }
+        .edit-stock input {
+            width: 60px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="inventory-container">
+        <div class="inventory-header">
+            <h1>Inventory Management</h1>
+            <div>
+                <a href="/" class="btn">Back to Store</a>
+                <button id="refresh-btn" class="btn">Refresh</button>
+            </div>
+        </div>
+
+        <div class="inventory-alerts">
+            <h2>Low Stock Alerts (<span id="low-stock-count">0</span>)</h2>
+            <div id="low-stock-items" class="alert-box"></div>
+        </div>
+
+        <table class="inventory-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Product Name</th>
+                    <th>Current Stock</th>
+                    <th>Status</th>
+                    <th>Price</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="inventory-list">
+                <!-- Inventory items will be loaded here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', loadInventory);
+
+        document.getElementById('refresh-btn').addEventListener('click', loadInventory);
+
+        async function loadInventory() {
+            try {
+                // Load full inventory
+                const response = await fetch('/api/inventory');
+                const inventory = await response.json();
+                renderInventory(inventory);
+
+                // Load low stock items
+                const lowStockResponse = await fetch('/api/inventory/low-stock');
+                const lowStockData = await lowStockResponse.json();
+                renderLowStockAlerts(lowStockData);
+            } catch (error) {
+                console.error('Error loading inventory:', error);
+                alert('Failed to load inventory data');
+            }
+        }
+
+        function renderInventory(inventory) {
+            const tbody = document.getElementById('inventory-list');
+            tbody.innerHTML = inventory.map(item => `
+                <tr>
+                    <td>${item.id}</td>
+                    <td>${item.name}</td>
+                    <td>${item.stock}</td>
+                    <td class="${item.status === 'LOW' ? 'stock-low' : 'stock-ok'}">
+                        ${item.status}
+                    </td>
+                    <td>$${item.price.toFixed(2)}</td>
+                    <td>
+                        <div class="edit-stock">
+                            <input type="number" id="stock-${item.id}" value="${item.stock}">
+                            <button onclick="updateStock(${item.id})">Update</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderLowStockAlerts(data) {
+            const countElement = document.getElementById('low-stock-count');
+            const alertBox = document.getElementById('low-stock-items');
+            
+            countElement.textContent = data.count;
+            
+            if (data.count === 0) {
+                alertBox.innerHTML = '<p>No low stock items</p>';
+            } else {
+                alertBox.innerHTML = data.products.map(item => `
+                    <div class="alert-item">
+                        <strong>${item.name}</strong> - Only ${item.stock} remaining
+                    </div>
+                `).join('');
+            }
+        }
+
+        async function updateStock(productId) {
+            const newStock = document.getElementById(`stock-${productId}`).value;
+            
+            if (!newStock || isNaN(newStock) || newStock < 0) {
+                alert('Please enter a valid stock quantity');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/inventory/${productId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stock: parseInt(newStock) })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    loadInventory(); // Refresh the inventory
+                }
+            } catch (error) {
+                console.error('Error updating stock:', error);
+                alert('Failed to update stock');
+            }
+        }
+    </script>
+</body>
+</html>
